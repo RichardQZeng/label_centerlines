@@ -42,6 +42,10 @@ clone repository and run
     pip install -r requirements.txt
     python setup.py install
 
+or by conda
+.. code-block:: shell
+   conda install -c appliedgrg label_centerline
+
 ---
 CLI
 ---
