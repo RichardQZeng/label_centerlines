@@ -1,4 +1,4 @@
-from itertools import combinations
+from itertools import combinations, product
 import logging
 import networkx as nx
 from networkx.exception import NetworkXNoPath
@@ -9,8 +9,27 @@ from scipy.ndimage import gaussian_filter1d
 from shapely.geometry import LineString, MultiLineString, Point, MultiPoint
 
 from label_centerlines.exceptions import CenterlineError
+from shapely import STRtree
+
+import networkit as nk
 
 logger = logging.getLogger(__name__)
+
+
+def filter_nodes(geom, graph, vor, end_nodes):
+    if not geom:
+        return end_nodes
+
+    pts = [Point(vor.vertices[i]) for i in end_nodes]  # points in graph
+    idx = STRtree(pts)
+    indices = idx.query(geom)
+
+    idx_final = []
+    for i in indices:
+        if geom.contains(pts[i]):
+            idx_final.append(end_nodes[i])
+
+    return idx_final
 
 
 def get_centerline(
@@ -20,6 +39,8 @@ def get_centerline(
     simplification=0.05,
     smooth_sigma=5,
     max_paths=5,
+    src_geom=None,
+    dst_geom=None
 ):
     """
     Return centerline from geometry.
@@ -78,7 +99,28 @@ def get_centerline(
             logger.debug("Polygon has too few points")
             raise CenterlineError("Polygon has too few points")
         logger.debug("get longest path from %s end nodes", len(end_nodes))
-        longest_paths = _get_longest_paths(end_nodes, graph, max_paths)
+
+        src_nodes = filter_nodes(src_geom, graph, vor, end_nodes)
+        dst_nodes = filter_nodes(dst_geom, graph, vor, end_nodes)
+        # longest_paths = _get_longest_paths(src_nodes, dst_nodes, graph, max_paths)
+
+        graph_nk = nk.nxadapter.nx2nk(graph, weightAttr='weight')
+        nx_nodes = list(graph.nodes())
+        nk_nodes = list(graph_nk.iterNodes())
+
+        map_nk_nx = dict(zip(nk_nodes, nx_nodes))
+        map_nx_nk = dict(zip(nx_nodes, nk_nodes))
+
+        all_pair_dijkstra = nk.distance.APSP(graph_nk)
+        all_pair_dijkstra.run()
+        distance = [(src, dst, all_pair_dijkstra.getDistance(src, dst)) for src, dst in combinations(nk_nodes, 2)]
+        distance.sort(key=operator.itemgetter(2), reverse=True)
+        longest = distance[0]
+        dijkstra = nk.distance.Dijkstra(graph_nk, longest[0], True, False, longest[1])
+        dijkstra.run()
+        longest_paths = dijkstra.getPath(longest[1])
+        longest_paths = [[map_nk_nx[i] for i in longest_paths]]
+
         if not longest_paths:
             logger.debug("no paths found between end nodes")
             raise CenterlineError("no paths found between end nodes")
@@ -154,11 +196,12 @@ def _smooth_linestring(linestring, smooth_sigma):
     )
 
 
-def _get_longest_paths(nodes, graph, max_paths):
+def _get_longest_paths(src_nodes, dst_nodes, graph, max_paths):
     """Return longest paths of all possible paths between a list of nodes."""
 
     def _gen_paths_distances():
-        for node1, node2 in combinations(nodes, r=2):
+        # for node1, node2 in combinations(nodes, r=2):
+        for node1, node2 in product(src_nodes, dst_nodes):
             try:
                 yield nx.single_source_dijkstra(
                     G=graph, source=node1, target=node2, weight="weight"
