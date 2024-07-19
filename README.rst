@@ -34,6 +34,11 @@ Steps:
 ------------
 Installation
 ------------
+Networkit is added to speedup the path finding.
+
+------------
+Installation
+------------
 
 clone repository and run
 
