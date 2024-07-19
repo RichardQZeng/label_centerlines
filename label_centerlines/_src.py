@@ -193,7 +193,7 @@ def _get_absolute_angle(edge1, edge2):
     """Return absolute angle between edges."""
     v1 = edge1[0] - edge1[1]
     v2 = edge2[0] - edge2[1]
-    return abs(np.degrees(np.math.atan2(np.linalg.det([v1, v2]), np.dot(v1, v2))))
+    return abs(np.degrees(np.arctan2(np.linalg.det([v1, v2]), np.dot(v1, v2))))
 
 
 def _get_end_nodes(graph):
