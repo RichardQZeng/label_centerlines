@@ -27,6 +27,7 @@ setup(
         "scipy>=0.17",
         "Shapely>=1.5",
         "tqdm",
+        "networkit>=11.0"
     ],
     classifiers=[
         "Development Status :: 3 - Alpha",
