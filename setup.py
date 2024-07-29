@@ -11,7 +11,7 @@ with open("label_centerlines/__init__.py") as f:
             continue
 
 setup(
-    name="label_centerlines",
+    name="bera_centerlines",
     version=version,
     description="extract centerlines from polygons",
     author="Joachim Ungar",
