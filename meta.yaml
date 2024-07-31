@@ -1,0 +1,51 @@
+{% set name = "bera_centerlines" %}
+{% set version = "2024.7.0" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  url: https://github.com/RichardQZeng/label_centerlines/archive/{{ version }}.tar.gz
+  sha256: 3f28ab14a91110bbf3ae772912c185ee2c6ca6f7e926c39e4237a82e0a9310ca
+
+build:
+  entry_points:
+    - label_centerlines=label_centerlines.cli:main
+  noarch: python
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+  number: 0
+
+requirements:
+  host:
+    - python
+    - pytest-runner
+    - pip
+  run:
+    - python
+    - click
+    - fiona >=1.7.0
+    - networkx >=2.1
+    - scipy >=0.17
+    - shapely >=1.5
+    - tqdm
+    - networkit >=11.0
+
+test:
+  imports:
+    - label_centerlines
+  commands:
+    - pip check
+    - label_centerlines --help
+  requires:
+    - pip
+
+about:
+  home: https://github.com/ungarj/label_centerlines
+  summary: Invoke py.test as distutils command with dependency resolution
+  license: MIT
+  license_file: LICENSE.rst
+
+extra:
+  recipe-maintainers:
+    - richard
