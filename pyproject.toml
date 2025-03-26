@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "bera_centerline"
+name = "bera_centerlines"
 dynamic = ["version"]
 description = "An advanced forest line feature analysis platform"
 requires-python = ">=3.10"
