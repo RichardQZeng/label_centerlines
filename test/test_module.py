@@ -79,6 +79,32 @@ def test_centerline_guided_strategy_virtual(alps_shape, alps_endpoint_points):
     assert Point(centerline.coords[-1]).distance(dst_pt) < 1e-9
 
 
+def test_centerline_guided_strategy_candidate(alps_shape):
+    src_pt = alps_shape.representative_point()
+    dst_pt = alps_shape.centroid
+    centerline = get_centerline(
+        alps_shape,
+        src_geom=src_pt,
+        dst_geom=dst_pt,
+        guided_strategy="candidate",
+    )
+    assert centerline.is_valid
+    assert centerline.geom_type == "LineString"
+
+
+def test_centerline_guided_strategy_candidate_strict_anchors(alps_shape):
+    src_pt = alps_shape.representative_point()
+    dst_pt = alps_shape.centroid
+    centerline = get_centerline(
+        alps_shape,
+        src_geom=src_pt,
+        dst_geom=dst_pt,
+        guided_strategy="candidate",
+    )
+    assert Point(centerline.coords[0]).distance(src_pt) < 1e-9
+    assert Point(centerline.coords[-1]).distance(dst_pt) < 1e-9
+
+
 def test_centerline_guided_failure_raises_in_strict_mode(alps_shape, monkeypatch):
     src_pt = alps_shape.representative_point()
     dst_pt = alps_shape.centroid

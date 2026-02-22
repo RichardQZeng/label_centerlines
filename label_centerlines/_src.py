@@ -406,6 +406,81 @@ def _build_medial_weighted_graph(graph, vor, geometry, alpha):
     return weighted
 
 
+def _build_medial_weighted_graph_nk(graph, vor, geometry, alpha):
+    """Build NetworKit graph with edge costs biased to medial regions."""
+    nodes = list(graph.nodes())
+    if not nodes:
+        return nk.graph.Graph(0, weighted=True)
+
+    max_node_id = max(nodes)
+    weighted_nk = nk.graph.Graph(max_node_id + 1, weighted=True)
+    for u, v in graph.edges():
+        p1 = Point(vor.vertices[u])
+        p2 = Point(vor.vertices[v])
+        length = p1.distance(p2)
+        clearance = min(geometry.boundary.distance(p1), geometry.boundary.distance(p2))
+        weight = length / max(clearance, 1e-6) ** alpha
+        weighted_nk.addEdge(u, v, weight)
+    return weighted_nk
+
+
+def _nk_shortest_path_and_cost(graph_nk, src_node, dst_node):
+    """Return shortest path and cost from NetworKit, or None if unreachable."""
+    src_node = int(src_node)
+    dst_node = int(dst_node)
+    node_count = graph_nk.numberOfNodes()
+    if src_node < 0 or dst_node < 0 or src_node >= node_count or dst_node >= node_count:
+        return None
+
+    solver = None
+    if hasattr(nk.distance, "BidirectionalDijkstra"):
+        try:
+            solver = nk.distance.BidirectionalDijkstra(graph_nk, src_node, dst_node, True)
+        except TypeError:
+            solver = nk.distance.BidirectionalDijkstra(graph_nk, src_node, dst_node)
+
+    if solver is None:
+        solver = nk.distance.Dijkstra(graph_nk, src_node, True, False, dst_node)
+
+    solver.run()
+
+    distance = None
+    for getter in (
+        lambda: solver.getDistance(dst_node),
+        lambda: solver.getDistance(),
+        lambda: solver.distance(dst_node),
+    ):
+        try:
+            distance = getter()
+            break
+        except Exception:
+            continue
+
+    if distance is None:
+        return None
+
+    distance = float(distance)
+    if not np.isfinite(distance) or distance >= np.finfo(np.float64).max:
+        return None
+
+    path = None
+    for getter in (
+        lambda: solver.getPath(dst_node),
+        lambda: solver.getPath(),
+    ):
+        try:
+            path = getter()
+            break
+        except Exception:
+            continue
+
+    if not path:
+        return None
+
+    path_nodes = [int(node) for node in path]
+    return path_nodes, distance
+
+
 def _line_from_nodes_with_anchors(path_nodes, vor, src_point, dst_point):
     coords = [src_point.coords[0]]
     coords.extend([tuple(vor.vertices[node]) for node in path_nodes])
@@ -473,18 +548,17 @@ def _get_guided_path(
     if not src_candidates or not dst_candidates:
         return None
 
-    weighted = _build_medial_weighted_graph(graph, vor, geometry, alpha)
+    weighted_nk = _build_medial_weighted_graph_nk(graph, vor, geometry, alpha)
     best = None
 
     for src_node in src_candidates:
         for dst_node in dst_candidates:
             if src_node == dst_node:
                 continue
-            try:
-                path = nx.shortest_path(weighted, src_node, dst_node, weight="weight")
-                score = nx.path_weight(weighted, path, weight="weight")
-            except NetworkXNoPath:
+            solved = _nk_shortest_path_and_cost(weighted_nk, src_node, dst_node)
+            if solved is None:
                 continue
+            path, score = solved
 
             src_dist = src_point.distance(Point(vor.vertices[src_node]))
             dst_dist = dst_point.distance(Point(vor.vertices[dst_node]))
