@@ -40,7 +40,13 @@ def get_centerline(
     smooth_sigma=5,
     max_paths=5,
     src_geom=None,
-    dst_geom=None
+    dst_geom=None,
+    guided_strategy="virtual",
+    endpoint_mode="strict",
+    snap_tolerance=None,
+    endpoint_candidate_k=5,
+    max_terminal_angle=40,
+    alpha=0.5,
 ):
     """
     Return centerline from geometry.
@@ -58,6 +64,13 @@ def get_centerline(
         (default: 5)
     max_paths : Number of longest paths used to create the centerlines.
         (default: 5)
+    src_geom, dst_geom : Optional endpoint guidance geometries.
+    guided_strategy : "candidate", "virtual", or "legacy".
+    endpoint_mode : "strict" or "soft".
+    snap_tolerance : Maximum endpoint snap distance for soft mode.
+    endpoint_candidate_k : Number of endpoint graph candidates.
+    max_terminal_angle : Maximum allowed terminal deflection in degrees.
+    alpha : Exponent for medial-aware edge weighting.
 
     Returns:
     --------
@@ -70,6 +83,16 @@ def get_centerline(
 
     """
     logger.debug("geometry type %s", geom.geom_type)
+
+    valid_endpoint_modes = {"strict", "soft"}
+    if endpoint_mode not in valid_endpoint_modes:
+        raise ValueError("endpoint_mode must be one of %s" % sorted(valid_endpoint_modes))
+
+    valid_guided_strategies = {"candidate", "virtual", "legacy"}
+    if guided_strategy not in valid_guided_strategies:
+        raise ValueError(
+            "guided_strategy must be one of %s" % sorted(valid_guided_strategies)
+        )
 
     if geom.geom_type == "Polygon":
         # segmentized Polygon outline
@@ -100,43 +123,124 @@ def get_centerline(
             raise CenterlineError("Polygon has too few points")
         logger.debug("get longest path from %s end nodes", len(end_nodes))
 
-        src_nodes = filter_nodes(src_geom, graph, vor, end_nodes)
-        dst_nodes = filter_nodes(dst_geom, graph, vor, end_nodes)
-        # longest_paths = _get_longest_paths(src_nodes, dst_nodes, graph, max_paths)
+        centerline = None
+        src_point = _as_endpoint_point(src_geom)
+        dst_point = _as_endpoint_point(dst_geom)
+        if snap_tolerance is None:
+            snap_tolerance = 2 * segmentize_maxlen
 
-        graph_nk = nk.nxadapter.nx2nk(graph, weightAttr='weight')
-        nx_nodes = list(graph.nodes())
-        nk_nodes = list(graph_nk.iterNodes())
+        if (
+            guided_strategy in {"candidate", "virtual"}
+            and src_point is not None
+            and dst_point is not None
+        ):
+            src_nodes = filter_nodes(src_geom, graph, vor, end_nodes)
+            dst_nodes = filter_nodes(dst_geom, graph, vor, end_nodes)
+            src_candidates = _pick_endpoint_candidates(
+                src_point,
+                graph,
+                vor,
+                geom,
+                endpoint_candidate_k,
+                preferred_nodes=src_nodes,
+            )
+            dst_candidates = _pick_endpoint_candidates(
+                dst_point,
+                graph,
+                vor,
+                geom,
+                endpoint_candidate_k,
+                preferred_nodes=dst_nodes,
+            )
 
-        map_nk_nx = dict(zip(nk_nodes, nx_nodes))
-        map_nx_nk = dict(zip(nx_nodes, nk_nodes))
+            if guided_strategy == "virtual":
+                guided = _get_guided_path_virtual(
+                    graph,
+                    vor,
+                    geom,
+                    src_point,
+                    dst_point,
+                    src_candidates,
+                    dst_candidates,
+                    max_terminal_angle,
+                    alpha,
+                    enforce_angle=(endpoint_mode == "strict"),
+                )
+            else:
+                guided = _get_guided_path(
+                    graph,
+                    vor,
+                    geom,
+                    src_point,
+                    dst_point,
+                    src_candidates,
+                    dst_candidates,
+                    max_terminal_angle,
+                    alpha,
+                    enforce_angle=(endpoint_mode == "strict"),
+                )
 
-        all_pair_dijkstra = nk.distance.APSP(graph_nk)
-        all_pair_dijkstra.run()
-        distance = [(src, dst, all_pair_dijkstra.getDistance(src, dst)) for src, dst in combinations(nk_nodes, 2)]
-        distance.sort(key=operator.itemgetter(2), reverse=True)
-        longest = distance[0]
-        dijkstra = nk.distance.Dijkstra(graph_nk, longest[0], True, False, longest[1])
-        dijkstra.run()
-        longest_paths = dijkstra.getPath(longest[1])
-        longest_paths = [[map_nk_nx[i] for i in longest_paths]]
+            if guided is None and endpoint_mode == "strict":
+                logger.debug(
+                    "strict endpoint guidance exceeded angle guard, retrying without guard"
+                )
+                if guided_strategy == "virtual":
+                    guided = _get_guided_path_virtual(
+                        graph,
+                        vor,
+                        geom,
+                        src_point,
+                        dst_point,
+                        src_candidates,
+                        dst_candidates,
+                        max_terminal_angle,
+                        alpha,
+                        enforce_angle=False,
+                    )
+                else:
+                    guided = _get_guided_path(
+                        graph,
+                        vor,
+                        geom,
+                        src_point,
+                        dst_point,
+                        src_candidates,
+                        dst_candidates,
+                        max_terminal_angle,
+                        alpha,
+                        enforce_angle=False,
+                    )
 
-        if not longest_paths:
-            logger.debug("no paths found between end nodes")
-            raise CenterlineError("no paths found between end nodes")
-        if logger.getEffectiveLevel() <= 10:
-            logger.debug("longest paths:")
-            for path in longest_paths:
-                logger.debug(LineString(vor.vertices[path]))
+            if guided is not None:
+                path_nodes = guided["path"]
+                if endpoint_mode == "strict":
+                    centerline = _line_from_nodes_with_anchors(
+                        path_nodes, vor, src_point, dst_point
+                    )
+                    centerline = _smooth_linestring_fixed_ends(centerline, smooth_sigma)
+                else:
+                    centerline = LineString(vor.vertices[path_nodes])
+                    centerline = _smooth_linestring(centerline, smooth_sigma)
+                    centerline = _soft_snap_centerline_to_endpoints(
+                        centerline, src_point, dst_point, snap_tolerance
+                    )
 
-        # get least curved path from the longest paths, smooth and
-        # return as LineString
-        centerline = _smooth_linestring(
-            LineString(
-                vor.vertices[_get_least_curved_path(longest_paths, vor.vertices)]
-            ),
-            smooth_sigma,
-        )
+        if centerline is None:
+            longest_paths = _get_legacy_longest_paths(graph)
+            if not longest_paths:
+                logger.debug("no paths found between end nodes")
+                raise CenterlineError("no paths found between end nodes")
+            if logger.getEffectiveLevel() <= 10:
+                logger.debug("longest paths:")
+                for path in longest_paths:
+                    logger.debug(LineString(vor.vertices[path]))
+
+            centerline = _smooth_linestring(
+                LineString(
+                    vor.vertices[_get_least_curved_path(longest_paths, vor.vertices)]
+                ),
+                smooth_sigma,
+            )
         logger.debug("centerline: %s", centerline)
         logger.debug("return linestring")
         return centerline
@@ -148,7 +252,20 @@ def get_centerline(
         for subgeom in geom.geoms:
             try:
                 sub_centerline = get_centerline(
-                    subgeom, segmentize_maxlen, max_points, simplification, smooth_sigma
+                    subgeom,
+                    segmentize_maxlen,
+                    max_points,
+                    simplification,
+                    smooth_sigma,
+                    max_paths,
+                    None,
+                    None,
+                    guided_strategy,
+                    endpoint_mode,
+                    snap_tolerance,
+                    endpoint_candidate_k,
+                    max_terminal_angle,
+                    alpha,
                 )
                 sub_centerlines.append(sub_centerline)
             except CenterlineError as e:
@@ -194,6 +311,299 @@ def _smooth_linestring(linestring, smooth_sigma):
             np.array(gaussian_filter1d(linestring.xy[1], smooth_sigma)),
         )
     )
+
+
+def _smooth_linestring_fixed_ends(linestring, smooth_sigma):
+    """Smooth interior vertices but keep first/last coordinates fixed."""
+    coords = list(linestring.coords)
+    if len(coords) < 3:
+        return linestring
+    smoothed = _smooth_linestring(linestring, smooth_sigma)
+    smoothed_coords = list(smoothed.coords)
+    smoothed_coords[0] = coords[0]
+    smoothed_coords[-1] = coords[-1]
+    return LineString(smoothed_coords)
+
+
+def _as_endpoint_point(geom):
+    """Convert endpoint guidance geometry to a representative point."""
+    if geom is None:
+        return None
+    if geom.geom_type == "Point":
+        return geom
+    if hasattr(geom, "representative_point"):
+        return geom.representative_point()
+    return None
+
+
+def _pick_endpoint_candidates(
+    point, graph, vor, geometry, candidate_k, preferred_nodes=None
+):
+    """Pick endpoint candidate graph nodes with distance/clearance score."""
+    available_nodes = list(graph.nodes())
+    if not available_nodes:
+        return []
+
+    preferred_nodes = preferred_nodes or []
+    filtered_preferred = [node for node in preferred_nodes if node in graph]
+    scored = []
+    for node in available_nodes:
+        node_pt = Point(vor.vertices[node])
+        dist = point.distance(node_pt)
+        boundary_dist = geometry.boundary.distance(node_pt)
+        score = dist + (0.2 / max(boundary_dist, 1e-6))
+        if node in filtered_preferred:
+            score *= 0.6
+        scored.append((score, node))
+    scored.sort(key=operator.itemgetter(0, 1))
+
+    chosen = []
+    seen = set()
+    for node in filtered_preferred:
+        if node not in seen:
+            chosen.append(node)
+            seen.add(node)
+        if len(chosen) >= candidate_k:
+            return chosen
+
+    for _, node in scored:
+        if node in seen:
+            continue
+        chosen.append(node)
+        seen.add(node)
+        if len(chosen) >= candidate_k:
+            break
+    return chosen
+
+
+def _build_medial_weighted_graph(graph, vor, geometry, alpha):
+    """Build graph with edge costs biased to medial regions."""
+    weighted = nx.Graph()
+    for u, v in graph.edges():
+        p1 = Point(vor.vertices[u])
+        p2 = Point(vor.vertices[v])
+        length = p1.distance(p2)
+        clearance = min(geometry.boundary.distance(p1), geometry.boundary.distance(p2))
+        weight = length / max(clearance, 1e-6) ** alpha
+        weighted.add_edge(u, v, weight=weight)
+    return weighted
+
+
+def _line_from_nodes_with_anchors(path_nodes, vor, src_point, dst_point):
+    coords = [src_point.coords[0]]
+    coords.extend([tuple(vor.vertices[node]) for node in path_nodes])
+    coords.append(dst_point.coords[0])
+    deduped = [coords[0]]
+    for coord in coords[1:]:
+        if coord != deduped[-1]:
+            deduped.append(coord)
+    return LineString(deduped)
+
+
+def _soft_snap_centerline_to_endpoints(linestring, src_point, dst_point, tolerance):
+    """Snap line ends only when endpoint is close enough."""
+    coords = list(linestring.coords)
+    if not coords:
+        return linestring
+
+    if Point(coords[0]).distance(src_point) <= tolerance:
+        coords[0] = src_point.coords[0]
+    if Point(coords[-1]).distance(dst_point) <= tolerance:
+        coords[-1] = dst_point.coords[0]
+    return LineString(coords)
+
+
+def _terminal_deflection_angle(path, vertices, src_point, dst_point):
+    """Get worst terminal deflection angle in degrees."""
+    if len(path) < 2:
+        return 0.0
+
+    src_xy = np.array(src_point.coords[0])
+    dst_xy = np.array(dst_point.coords[0])
+    start_xy = np.array(vertices[path[0]])
+    start_next_xy = np.array(vertices[path[1]])
+    end_xy = np.array(vertices[path[-1]])
+    end_prev_xy = np.array(vertices[path[-2]])
+
+    start_angle = _angle_between_vectors(start_xy - src_xy, start_next_xy - start_xy)
+    end_angle = _angle_between_vectors(end_prev_xy - end_xy, dst_xy - end_xy)
+    return max(start_angle, end_angle)
+
+
+def _angle_between_vectors(v1, v2):
+    n1 = np.linalg.norm(v1)
+    n2 = np.linalg.norm(v2)
+    if n1 == 0 or n2 == 0:
+        return 0.0
+    cosang = np.dot(v1, v2) / (n1 * n2)
+    cosang = max(-1.0, min(1.0, cosang))
+    return float(np.degrees(np.arccos(cosang)))
+
+
+def _get_guided_path(
+    graph,
+    vor,
+    geometry,
+    src_point,
+    dst_point,
+    src_candidates,
+    dst_candidates,
+    max_terminal_angle,
+    alpha,
+    enforce_angle=True,
+):
+    """Get best endpoint-guided path between candidate node sets."""
+    if not src_candidates or not dst_candidates:
+        return None
+
+    weighted = _build_medial_weighted_graph(graph, vor, geometry, alpha)
+    best = None
+
+    for src_node in src_candidates:
+        for dst_node in dst_candidates:
+            if src_node == dst_node:
+                continue
+            try:
+                path = nx.shortest_path(weighted, src_node, dst_node, weight="weight")
+                score = nx.path_weight(weighted, path, weight="weight")
+            except NetworkXNoPath:
+                continue
+
+            src_dist = src_point.distance(Point(vor.vertices[src_node]))
+            dst_dist = dst_point.distance(Point(vor.vertices[dst_node]))
+            terminal_angle = _terminal_deflection_angle(
+                path, vor.vertices, src_point, dst_point
+            )
+            if enforce_angle and terminal_angle > max_terminal_angle:
+                continue
+
+            total_score = score + src_dist + dst_dist + 0.02 * terminal_angle
+            candidate = {
+                "path": path,
+                "score": total_score,
+                "angle": terminal_angle,
+            }
+            if best is None or candidate["score"] < best["score"]:
+                best = candidate
+    return best
+
+
+def _endpoint_connector_cost(endpoint_point, node, vor, geometry):
+    """Cost for connecting endpoint anchor to real graph node."""
+    node_point = Point(vor.vertices[node])
+    distance_cost = endpoint_point.distance(node_point)
+    boundary_penalty = 0.2 / max(geometry.boundary.distance(node_point), 1e-6)
+    return distance_cost + boundary_penalty
+
+
+def _get_guided_path_virtual(
+    graph,
+    vor,
+    geometry,
+    src_point,
+    dst_point,
+    src_candidates,
+    dst_candidates,
+    max_terminal_angle,
+    alpha,
+    enforce_angle=True,
+):
+    """Get best path by solving on graph with virtual endpoint nodes."""
+    if not src_candidates or not dst_candidates:
+        return None
+
+    src_virtual = "__SRC__"
+    dst_virtual = "__DST__"
+    augmented = _build_medial_weighted_graph(graph, vor, geometry, alpha)
+    augmented.add_node(src_virtual)
+    augmented.add_node(dst_virtual)
+
+    src_added = 0
+    for node in src_candidates:
+        if node not in augmented:
+            continue
+        augmented.add_edge(
+            src_virtual,
+            node,
+            weight=_endpoint_connector_cost(src_point, node, vor, geometry),
+        )
+        src_added += 1
+
+    dst_added = 0
+    for node in dst_candidates:
+        if node not in augmented:
+            continue
+        augmented.add_edge(
+            dst_virtual,
+            node,
+            weight=_endpoint_connector_cost(dst_point, node, vor, geometry),
+        )
+        dst_added += 1
+
+    if src_added == 0 or dst_added == 0:
+        return None
+
+    best = None
+    try:
+        path_iter = nx.shortest_simple_paths(
+            augmented,
+            src_virtual,
+            dst_virtual,
+            weight="weight",
+        )
+        for index, raw_path in enumerate(path_iter):
+            if index >= 40:
+                break
+            path = [node for node in raw_path if node not in {src_virtual, dst_virtual}]
+            if len(path) < 2:
+                continue
+
+            terminal_angle = _terminal_deflection_angle(
+                path, vor.vertices, src_point, dst_point
+            )
+            if enforce_angle and terminal_angle > max_terminal_angle:
+                continue
+
+            score = nx.path_weight(augmented, raw_path, weight="weight")
+            score = score + 0.02 * terminal_angle
+            candidate = {
+                "path": path,
+                "score": score,
+                "angle": terminal_angle,
+            }
+            if best is None or candidate["score"] < best["score"]:
+                best = candidate
+            if not enforce_angle:
+                break
+    except NetworkXNoPath:
+        return None
+
+    return best
+
+
+def _get_legacy_longest_paths(graph):
+    """Keep old longest-path extraction as fallback."""
+    graph_nk = nk.nxadapter.nx2nk(graph, weightAttr="weight")
+    nx_nodes = list(graph.nodes())
+    nk_nodes = list(graph_nk.iterNodes())
+    map_nk_nx = dict(zip(nk_nodes, nx_nodes))
+
+    all_pair_dijkstra = nk.distance.APSP(graph_nk)
+    all_pair_dijkstra.run()
+    distance = [
+        (src, dst, all_pair_dijkstra.getDistance(src, dst))
+        for src, dst in combinations(nk_nodes, 2)
+    ]
+    if not distance:
+        return []
+    distance.sort(key=operator.itemgetter(2), reverse=True)
+    longest = distance[0]
+    dijkstra = nk.distance.Dijkstra(graph_nk, longest[0], True, False, longest[1])
+    dijkstra.run()
+    longest_path = dijkstra.getPath(longest[1])
+    if not longest_path:
+        return []
+    return [[map_nk_nx[i] for i in longest_path]]
 
 
 def _get_longest_paths(src_nodes, dst_nodes, graph, max_paths):

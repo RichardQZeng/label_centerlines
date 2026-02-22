@@ -67,9 +67,27 @@ Options:
   --max_paths INTEGER             Number of longest paths used to create the centerlines.
                                   (default: 5)
   --output_driver [GeoJSON|GPKG]  Output format. (default: 'GeoJSON')
+  --src-point TEXT                Source endpoint as 'x,y'.
+  --dst-point TEXT                Destination endpoint as 'x,y'.
+  --guided-strategy [candidate|virtual|legacy]
+                                  Guided extraction strategy. (default: 'virtual')
+  --endpoint-mode [strict|soft]   Endpoint policy for guided extraction.
+  --snap-tolerance FLOAT          Soft-mode snap tolerance in geometry units.
+  --endpoint-candidate-k INTEGER  Number of endpoint graph candidates.
+  --max-terminal-angle FLOAT      Maximum terminal deflection angle in degrees.
+  --alpha FLOAT                   Medial weighting exponent for guided path extraction.
   --verbose                       show information on processed features
   --debug                         show debug log messages
   --help                          Show this message and exit.
+```
+
+Endpoint-guided CLI example:
+
+``` shell
+label_centerlines input.geojson output.geojson \
+  --src-point "5.55,44.25" \
+  --dst-point "15.9,47.85" \
+  --endpoint-mode strict
 ```
 
 ## API
@@ -78,7 +96,22 @@ Options:
 >>> from label_centerlines import get_centerline
 >>> help(get_centerline)
 
-get_centerline(geom, segmentize_maxlen=0.5, max_points=3000, simplification=0.05, smooth_sigma=5, max_paths=5)
+get_centerline(
+    geom,
+    segmentize_maxlen=0.5,
+    max_points=3000,
+    simplification=0.05,
+    smooth_sigma=5,
+    max_paths=5,
+    src_geom=None,
+    dst_geom=None,
+    guided_strategy="virtual",
+    endpoint_mode="strict",
+    snap_tolerance=None,
+    endpoint_candidate_k=5,
+    max_terminal_angle=40,
+    alpha=0.5,
+)
 Return centerline from geometry.
 
 Parameters:
@@ -94,6 +127,13 @@ smooth_sigma : Smoothness of the output centerlines.
     (default: 5)
 max_paths : Number of longest paths used to create the centerlines.
     (default: 5)
+src_geom, dst_geom : Optional endpoint guidance geometries.
+guided_strategy : "candidate", "virtual", or "legacy".
+endpoint_mode : "strict" or "soft".
+snap_tolerance : Maximum endpoint snap distance for soft mode.
+endpoint_candidate_k : Number of endpoint graph candidates.
+max_terminal_angle : Maximum allowed terminal deflection angle in degrees.
+alpha : Exponent for medial-aware edge weighting.
 
 Returns:
 --------
