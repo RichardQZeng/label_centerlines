@@ -55,7 +55,19 @@ def test_centerline_strict_endpoint_guidance(alps_shape, alps_endpoint_points):
     assert Point(centerline.coords[-1]).distance(dst_pt) < 1e-9
 
 
-def test_centerline_guided_strategy_legacy(alps_shape, alps_endpoint_points):
+def test_centerline_guided_strategy_main_route(alps_shape, alps_endpoint_points):
+    src_pt, dst_pt = alps_endpoint_points
+    centerline = get_centerline(
+        alps_shape,
+        src_geom=src_pt,
+        dst_geom=dst_pt,
+        guided_strategy="main_route",
+    )
+    assert centerline.is_valid
+    assert centerline.geom_type == "LineString"
+
+
+def test_centerline_guided_strategy_legacy_alias(alps_shape, alps_endpoint_points):
     src_pt, dst_pt = alps_endpoint_points
     centerline = get_centerline(
         alps_shape,

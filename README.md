@@ -69,7 +69,7 @@ Options:
   --output_driver [GeoJSON|GPKG]  Output format. (default: 'GeoJSON')
   --src-point TEXT                Source endpoint as 'x,y'.
   --dst-point TEXT                Destination endpoint as 'x,y'.
-  --guided-strategy [candidate|virtual|legacy]
+  --guided-strategy [candidate|virtual|main_route|legacy]
                                   Guided extraction strategy. (default: 'virtual')
   --endpoint-mode [strict|soft]   Endpoint policy for guided extraction.
   --snap-tolerance FLOAT          Soft-mode snap tolerance in geometry units.
@@ -128,7 +128,7 @@ smooth_sigma : Smoothness of the output centerlines.
 max_paths : Number of longest paths used to create the centerlines.
     (default: 5)
 src_geom, dst_geom : Optional endpoint guidance geometries.
-guided_strategy : "candidate", "virtual", or "legacy".
+guided_strategy : "candidate", "virtual", or "main_route".
 endpoint_mode : "strict" or "soft".
 snap_tolerance : Maximum endpoint snap distance for soft mode.
 endpoint_candidate_k : Number of endpoint graph candidates.

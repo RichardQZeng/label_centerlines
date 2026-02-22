@@ -68,7 +68,7 @@ def get_centerline(
     max_paths : Number of longest paths used to create the centerlines.
         (default: 5)
     src_geom, dst_geom : Optional endpoint guidance geometries.
-    guided_strategy : "candidate", "virtual", or "legacy".
+    guided_strategy : "candidate", "virtual", or "main_route".
     endpoint_mode : "strict" or "soft".
     snap_tolerance : Maximum endpoint snap distance for soft mode.
     endpoint_candidate_k : Number of endpoint graph candidates.
@@ -91,11 +91,15 @@ def get_centerline(
     if endpoint_mode not in valid_endpoint_modes:
         raise ValueError("endpoint_mode must be one of %s" % sorted(valid_endpoint_modes))
 
-    valid_guided_strategies = {"candidate", "virtual", "legacy"}
+    valid_guided_strategies = {"candidate", "virtual", "main_route", "legacy"}
     if guided_strategy not in valid_guided_strategies:
         raise ValueError(
             "guided_strategy must be one of %s" % sorted(valid_guided_strategies)
         )
+
+    if guided_strategy == "legacy":
+        logger.warning("guided_strategy='legacy' is deprecated; use 'main_route' instead")
+        guided_strategy = "main_route"
 
     if geom.geom_type == "Polygon":
         # segmentized Polygon outline
@@ -238,12 +242,12 @@ def get_centerline(
         if centerline is None and guided_attempted:
             logger.warning(
                 "endpoint-guided extraction failed in soft mode; "
-                "falling back to legacy longest-path extraction"
+                "falling back to main-route longest-path extraction"
             )
 
         if centerline is None:
             graph_nk = _graph_from_voronoi_nk(vor, geom)
-            longest_paths = _get_legacy_longest_paths(graph_nk)
+            longest_paths = _get_main_route_longest_paths(graph_nk)
             if not longest_paths:
                 logger.debug("no paths found between end nodes")
                 raise CenterlineError("no paths found between end nodes")
@@ -674,8 +678,8 @@ def _get_guided_path_virtual(
     return best
 
 
-def _get_legacy_longest_paths(graph_nk):
-    """Keep old longest-path extraction as fallback."""
+def _get_main_route_longest_paths(graph_nk):
+    """Compute main-route longest-path extraction as fallback."""
     nk_nodes = list(graph_nk.iterNodes())
     if len(nk_nodes) < 2:
         return []
