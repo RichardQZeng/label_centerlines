@@ -242,7 +242,8 @@ def get_centerline(
             )
 
         if centerline is None:
-            longest_paths = _get_legacy_longest_paths(graph)
+            graph_nk = _graph_from_voronoi_nk(vor, geom)
+            longest_paths = _get_legacy_longest_paths(graph_nk)
             if not longest_paths:
                 logger.debug("no paths found between end nodes")
                 raise CenterlineError("no paths found between end nodes")
@@ -599,18 +600,19 @@ def _get_guided_path_virtual(
     return best
 
 
-def _get_legacy_longest_paths(graph):
+def _get_legacy_longest_paths(graph_nk):
     """Keep old longest-path extraction as fallback."""
-    graph_nk = nk.nxadapter.nx2nk(graph, weightAttr="weight")
-    nx_nodes = list(graph.nodes())
     nk_nodes = list(graph_nk.iterNodes())
-    map_nk_nx = dict(zip(nk_nodes, nx_nodes))
+    if len(nk_nodes) < 2:
+        return []
 
     all_pair_dijkstra = nk.distance.APSP(graph_nk)
     all_pair_dijkstra.run()
+    unreachable_distance = np.finfo(np.float64).max
     distance = [
         (src, dst, all_pair_dijkstra.getDistance(src, dst))
         for src, dst in combinations(nk_nodes, 2)
+        if all_pair_dijkstra.getDistance(src, dst) < unreachable_distance
     ]
     if not distance:
         return []
@@ -621,7 +623,7 @@ def _get_legacy_longest_paths(graph):
     longest_path = dijkstra.getPath(longest[1])
     if not longest_path:
         return []
-    return [[map_nk_nx[i] for i in longest_path]]
+    return [[int(i) for i in longest_path]]
 
 
 def _get_least_curved_path(paths, vertices):
@@ -662,6 +664,19 @@ def _graph_from_voronoi(vor, geometry):
     for x, y, dist in _yield_ridge_vertices(vor, geometry, dist=True):
         graph.add_nodes_from([x, y])
         graph.add_edge(x, y, weight=dist)
+    return graph
+
+
+def _graph_from_voronoi_nk(vor, geometry):
+    """Return networkit.Graph from Voronoi diagram within geometry."""
+    edges = list(_yield_ridge_vertices(vor, geometry, dist=True))
+    if not edges:
+        return nk.graph.Graph(0, weighted=True)
+
+    max_node_id = max(max(x, y) for x, y, _ in edges)
+    graph = nk.graph.Graph(max_node_id + 1, weighted=True)
+    for x, y, dist in edges:
+        graph.addEdge(x, y, dist)
     return graph
 
 
