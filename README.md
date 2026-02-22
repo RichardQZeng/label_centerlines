@@ -69,7 +69,7 @@ Options:
   --output_driver [GeoJSON|GPKG]  Output format. (default: 'GeoJSON')
   --src-point TEXT                Source endpoint as 'x,y'.
   --dst-point TEXT                Destination endpoint as 'x,y'.
-  --guided-strategy [candidate|virtual|main_route|legacy]
+  --guided-strategy [candidate|virtual|main_route]
                                   Guided extraction strategy. (default: 'virtual')
   --endpoint-mode [strict|soft]   Endpoint policy for guided extraction.
   --snap-tolerance FLOAT          Soft-mode snap tolerance in geometry units.

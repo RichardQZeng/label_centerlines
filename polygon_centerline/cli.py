@@ -103,9 +103,9 @@ def _parse_point_option(value, option_name):
 )
 @click.option(
     "--guided-strategy",
-    type=click.Choice(["candidate", "virtual", "main_route", "legacy"]),
+    type=click.Choice(["candidate", "virtual", "main_route"]),
     default="virtual",
-    help="Guided extraction strategy. ('legacy' is a deprecated alias for 'main_route')",
+    help="Guided extraction strategy.",
 )
 @click.option(
     "--endpoint-mode",

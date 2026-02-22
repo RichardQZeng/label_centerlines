@@ -91,15 +91,11 @@ def get_centerline(
     if endpoint_mode not in valid_endpoint_modes:
         raise ValueError("endpoint_mode must be one of %s" % sorted(valid_endpoint_modes))
 
-    valid_guided_strategies = {"candidate", "virtual", "main_route", "legacy"}
+    valid_guided_strategies = {"candidate", "virtual", "main_route"}
     if guided_strategy not in valid_guided_strategies:
         raise ValueError(
             "guided_strategy must be one of %s" % sorted(valid_guided_strategies)
         )
-
-    if guided_strategy == "legacy":
-        logger.warning("guided_strategy='legacy' is deprecated; use 'main_route' instead")
-        guided_strategy = "main_route"
 
     if geom.geom_type == "Polygon":
         # segmentized Polygon outline
