@@ -4,7 +4,9 @@ import pytest
 from shapely.geometry import Point
 
 from label_centerlines import __version__, get_centerline
+from label_centerlines.exceptions import CenterlineError
 from label_centerlines.cli import _parse_point_option, main
+import label_centerlines._src as src_module
 
 
 def test_cli():
@@ -75,6 +77,50 @@ def test_centerline_guided_strategy_virtual(alps_shape, alps_endpoint_points):
     )
     assert Point(centerline.coords[0]).distance(src_pt) < 1e-9
     assert Point(centerline.coords[-1]).distance(dst_pt) < 1e-9
+
+
+def test_centerline_guided_failure_raises_in_strict_mode(alps_shape, monkeypatch):
+    src_pt = alps_shape.representative_point()
+    dst_pt = alps_shape.centroid
+
+    monkeypatch.setattr(
+        src_module, "_get_guided_path_virtual", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(src_module, "_get_guided_path", lambda *args, **kwargs: None)
+
+    with pytest.raises(CenterlineError, match="endpoint-guided extraction failed"):
+        get_centerline(
+            alps_shape,
+            src_geom=src_pt,
+            dst_geom=dst_pt,
+            guided_strategy="virtual",
+            endpoint_mode="strict",
+        )
+
+
+def test_centerline_guided_failure_soft_mode_warns_and_falls_back(
+    alps_shape, monkeypatch, caplog
+):
+    src_pt = alps_shape.representative_point()
+    dst_pt = alps_shape.centroid
+
+    monkeypatch.setattr(
+        src_module, "_get_guided_path_virtual", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(src_module, "_get_guided_path", lambda *args, **kwargs: None)
+
+    with caplog.at_level("WARNING"):
+        centerline = get_centerline(
+            alps_shape,
+            src_geom=src_pt,
+            dst_geom=dst_pt,
+            guided_strategy="virtual",
+            endpoint_mode="soft",
+        )
+
+    assert centerline.is_valid
+    assert centerline.geom_type == "LineString"
+    assert "endpoint-guided extraction failed in soft mode" in caplog.text
 
 
 def test_parse_point_option_valid():

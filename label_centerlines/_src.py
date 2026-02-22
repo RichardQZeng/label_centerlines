@@ -1,4 +1,4 @@
-from itertools import combinations, product
+from itertools import combinations
 import logging
 import networkx as nx
 from networkx.exception import NetworkXNoPath
@@ -14,6 +14,9 @@ from shapely import STRtree
 import networkit as nk
 
 logger = logging.getLogger(__name__)
+
+ANGLE_PENALTY_WEIGHT = 0.02
+GUIDED_PATH_CANDIDATE_LIMIT = 40
 
 
 def filter_nodes(geom, graph, vor, end_nodes):
@@ -129,11 +132,13 @@ def get_centerline(
         if snap_tolerance is None:
             snap_tolerance = 2 * segmentize_maxlen
 
+        guided_attempted = False
         if (
             guided_strategy in {"candidate", "virtual"}
             and src_point is not None
             and dst_point is not None
         ):
+            guided_attempted = True
             src_nodes = filter_nodes(src_geom, graph, vor, end_nodes)
             dst_nodes = filter_nodes(dst_geom, graph, vor, end_nodes)
             src_candidates = _pick_endpoint_candidates(
@@ -224,6 +229,17 @@ def get_centerline(
                     centerline = _soft_snap_centerline_to_endpoints(
                         centerline, src_point, dst_point, snap_tolerance
                     )
+
+        if centerline is None and guided_attempted and endpoint_mode == "strict":
+            raise CenterlineError(
+                "endpoint-guided extraction failed for provided endpoints"
+            )
+
+        if centerline is None and guided_attempted:
+            logger.warning(
+                "endpoint-guided extraction failed in soft mode; "
+                "falling back to legacy longest-path extraction"
+            )
 
         if centerline is None:
             longest_paths = _get_legacy_longest_paths(graph)
@@ -477,7 +493,9 @@ def _get_guided_path(
             if enforce_angle and terminal_angle > max_terminal_angle:
                 continue
 
-            total_score = score + src_dist + dst_dist + 0.02 * terminal_angle
+            total_score = (
+                score + src_dist + dst_dist + ANGLE_PENALTY_WEIGHT * terminal_angle
+            )
             candidate = {
                 "path": path,
                 "score": total_score,
@@ -552,7 +570,7 @@ def _get_guided_path_virtual(
             weight="weight",
         )
         for index, raw_path in enumerate(path_iter):
-            if index >= 40:
+            if index >= GUIDED_PATH_CANDIDATE_LIMIT:
                 break
             path = [node for node in raw_path if node not in {src_virtual, dst_virtual}]
             if len(path) < 2:
@@ -565,7 +583,7 @@ def _get_guided_path_virtual(
                 continue
 
             score = nx.path_weight(augmented, raw_path, weight="weight")
-            score = score + 0.02 * terminal_angle
+            score = score + ANGLE_PENALTY_WEIGHT * terminal_angle
             candidate = {
                 "path": path,
                 "score": score,
@@ -604,22 +622,6 @@ def _get_legacy_longest_paths(graph):
     if not longest_path:
         return []
     return [[map_nk_nx[i] for i in longest_path]]
-
-
-def _get_longest_paths(src_nodes, dst_nodes, graph, max_paths):
-    """Return longest paths of all possible paths between a list of nodes."""
-
-    def _gen_paths_distances():
-        # for node1, node2 in combinations(nodes, r=2):
-        for node1, node2 in product(src_nodes, dst_nodes):
-            try:
-                yield nx.single_source_dijkstra(
-                    G=graph, source=node1, target=node2, weight="weight"
-                )
-            except NetworkXNoPath:
-                continue
-
-    return [x for (y, x) in sorted(_gen_paths_distances(), reverse=True)][:max_paths]
 
 
 def _get_least_curved_path(paths, vertices):
