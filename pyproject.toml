@@ -40,18 +40,18 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/RichardQZeng/label_centerlines"
+Homepage = "https://github.com/RichardQZeng/polygon_centerline"
 
 [tool.hatch.version]
-path = "label_centerlines/__init__.py"
+path = "polygon_centerline/__init__.py"
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "/label_centerlines",
+    "/polygon_centerline",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["/bera_centerlines"] 
+packages = ["/polygon_centerline"] 
 
 exclude = [
   "tests/*",

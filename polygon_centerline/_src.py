@@ -8,7 +8,7 @@ from scipy.spatial import Voronoi
 from scipy.ndimage import gaussian_filter1d
 from shapely.geometry import LineString, MultiLineString, Point, MultiPoint
 
-from label_centerlines.exceptions import CenterlineError
+from polygon_centerline.exceptions import CenterlineError
 from shapely import STRtree
 
 import networkit as nk

@@ -7,8 +7,8 @@ from shapely.geometry import Point, shape, mapping
 import time
 import tqdm
 
-from label_centerlines import __version__, get_centerline
-from label_centerlines.exceptions import CenterlineError
+from polygon_centerline import __version__, get_centerline
+from polygon_centerline.exceptions import CenterlineError
 
 
 class TqdmHandler(logging.StreamHandler):
@@ -168,7 +168,7 @@ def main(
     """
     # set up logger
     log_level = logging.DEBUG if debug else logging.INFO
-    logging.getLogger("label_centerlines").setLevel(log_level)
+    logging.getLogger("polygon_centerline").setLevel(log_level)
     stream_handler.setLevel(log_level)
 
     src_point = _parse_point_option(src_point, "--src-point")

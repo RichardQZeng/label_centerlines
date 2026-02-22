@@ -2,7 +2,7 @@ from setuptools import setup
 
 # get version number
 # from https://github.com/mapbox/rasterio/blob/master/setup.py#L55
-with open("label_centerlines/__init__.py") as f:
+with open("polygon_centerline/__init__.py") as f:
     for line in f:
         if line.find("__version__") >= 0:
             version = line.split("=")[1].strip()
@@ -16,10 +16,10 @@ setup(
     description="extract centerlines from polygons",
     author="Joachim Ungar",
     author_email="joachim.ungar@gmail.com",
-    url="https://github.com/ungarj/label_centerlines",
+    url="https://github.com/ungarj/polygon_centerline",
     license="MIT",
-    packages=["label_centerlines"],
-    entry_points={"console_scripts": ["label_centerlines=label_centerlines.cli:main"]},
+    packages=["polygon_centerline"],
+    entry_points={"console_scripts": ["polygon_centerline=polygon_centerline.cli:main"]},
     install_requires=[
         "click",
         "Fiona>=1.7.0",
@@ -27,7 +27,7 @@ setup(
         "scipy>=0.17",
         "Shapely>=1.5",
         "tqdm",
-        "networkit>=11.0"
+        "networkit>=11.0",
     ],
     classifiers=[
         "Development Status :: 3 - Alpha",

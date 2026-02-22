@@ -3,10 +3,10 @@ import click
 import pytest
 from shapely.geometry import Point
 
-from label_centerlines import __version__, get_centerline
-from label_centerlines.exceptions import CenterlineError
-from label_centerlines.cli import _parse_point_option, main
-import label_centerlines._src as src_module
+from polygon_centerline import __version__, get_centerline
+from polygon_centerline.exceptions import CenterlineError
+from polygon_centerline.cli import _parse_point_option, main
+import polygon_centerline._src as src_module
 
 
 def test_cli():

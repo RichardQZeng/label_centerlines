@@ -1,4 +1,4 @@
-# label_centerlines
+# polygon_centerline
 
 This tool runs with Python 3.6 and reads Polygon/MultiPolygon datasets
 such as i.e. the [geographic
@@ -40,14 +40,14 @@ python setup.py install
 ```
 
 or by conda .. code-block:: shell conda install -c appliedgrg
-label_centerline
+polygon_centerline
 
 ## CLI
 
 ``` shell
-$ label_centerlines --help
+$ polygon_centerline --help
 
-Usage: label_centerlines [OPTIONS] INPUT_PATH OUTPUT_PATH
+Usage: polygon_centerline [OPTIONS] INPUT_PATH OUTPUT_PATH
 
   Read features, convert to centerlines and write to output.
 
@@ -84,7 +84,7 @@ Options:
 Endpoint-guided CLI example:
 
 ``` shell
-label_centerlines input.geojson output.geojson \
+polygon_centerline input.geojson output.geojson \
   --src-point "5.55,44.25" \
   --dst-point "15.9,47.85" \
   --endpoint-mode strict
@@ -93,7 +93,7 @@ label_centerlines input.geojson output.geojson \
 ## API
 
 ``` 
->>> from label_centerlines import get_centerline
+>>> from polygon_centerline import get_centerline
 >>> help(get_centerline)
 
 get_centerline(
